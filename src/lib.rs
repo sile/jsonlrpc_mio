@@ -1,3 +1,3 @@
-mod node;
+pub mod node;
 
-pub use self::node::{Connection, JsonRpcNode, PeerId};
+pub use self::node::{Connection, IncomingMessage, JsonRpcNode, PeerId};
