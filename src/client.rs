@@ -102,6 +102,7 @@ impl RpcClientConnection {
     }
 
     fn handle_read(&mut self, poller: &mut Poll) -> serde_json::Result<()> {
+        // NOTE: The current implementation does not support batch responses.
         match self.stream.read_value() {
             Err(e) => self.handle_error(poller, e),
             Ok(response) => {
