@@ -71,7 +71,7 @@ where
             self.handle_listener_event(poller)?;
             Ok(true)
         } else if let Some(connection) = self.connections.get_mut(&token) {
-            connection.handle_event(poller, event)?;
+            connection.handle_event(poller, event, &mut self.requests)?;
             Ok(true)
         } else {
             Ok(false)
@@ -124,12 +124,41 @@ where
         }
     }
 
-    pub fn reply<T: Serialize>(&mut self, from: From, response: &T) -> serde_json::Result<()> {
-        todo!()
+    pub fn reply<T: Serialize>(
+        &mut self,
+        poller: &mut Poll,
+        from: From,
+        response: &T,
+    ) -> std::io::Result<bool> {
+        let Some(connection) = self.connections.get_mut(&from.token) else {
+            return Ok(false);
+        };
+        let token = connection.token;
+        let start_writing = connection.stream.write_buf().len() == 0;
+
+        if connection.stream.write_value_to_buf(response).is_err() {
+            self.disconnect(poller, token)?;
+            return Ok(false);
+        }
+
+        if connection.handle_write(poller, start_writing).is_none() {
+            self.disconnect(poller, token)?;
+            return Ok(false);
+        }
+
+        Ok(true)
+    }
+
+    fn disconnect(&mut self, poller: &mut Poll, token: Token) -> std::io::Result<()> {
+        let mut connection = self.connections.remove(&token).expect("unreachable");
+        poller
+            .registry()
+            .deregister(connection.stream.inner_mut())?;
+        Ok(())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct From {
     token: Token,
 }
@@ -142,7 +171,19 @@ struct Connection {
 }
 
 impl Connection {
-    fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> std::io::Result<()> {
+    fn handle_event<REQ>(
+        &mut self,
+        poller: &mut Poll,
+        event: &Event,
+        requests: &mut VecDeque<(From, REQ)>,
+    ) -> std::io::Result<()>
+    where
+        REQ: for<'de> Deserialize<'de>,
+    {
+        todo!()
+    }
+
+    fn handle_write(&mut self, poller: &mut Poll, start_writing: bool) -> Option<()> {
         todo!()
     }
 }

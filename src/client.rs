@@ -46,6 +46,8 @@ impl RpcClientConnection {
     }
 
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, message: &T) -> serde_json::Result<()> {
+        let start_writing = self.queued_bytes_len() == 0;
+
         self.stream
             .write_value_to_buf(message)
             .or_else(|e| self.handle_error(poller, e))?;
@@ -53,7 +55,6 @@ impl RpcClientConnection {
             return Ok(());
         }
 
-        let start_writing = self.queued_bytes_len() == 0;
         self.handle_write(poller, start_writing)
     }
 
