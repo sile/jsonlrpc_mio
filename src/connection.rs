@@ -1,7 +1,7 @@
 use std::{io::ErrorKind, net::Shutdown};
 
 use jsonlrpc::JsonlStream;
-use mio::{net::TcpStream, Interest, Poll, Token};
+use mio::{event::Event, net::TcpStream, Interest, Poll, Token};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -49,8 +49,21 @@ impl Connection {
         self.stream.write_buf().len()
     }
 
+    pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> serde_json::Result<()> {
+        debug_assert_eq!(self.token, event.token());
+        self.check_not_closed()?;
+
+        if self.state == ConnectionState::Connecting {
+            self.handle_connect(poller)?;
+        }
+        if event.is_writable() {
+            self.handle_write(poller, false)?;
+        }
+        Ok(())
+    }
+
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, request: &T) -> serde_json::Result<()> {
-        self.check_closed()?;
+        self.check_not_closed()?;
 
         let start_writing = self.queued_bytes_len() == 0;
 
@@ -64,12 +77,30 @@ impl Connection {
         self.handle_write(poller, start_writing)
     }
 
-    fn check_closed(&mut self) -> serde_json::Result<()> {
+    fn check_not_closed(&mut self) -> serde_json::Result<()> {
         if self.state == ConnectionState::Closed {
             Err(serde_json::Error::io(ErrorKind::NotConnected.into()))
         } else {
             Ok(())
         }
+    }
+
+    fn handle_connect(&mut self, poller: &mut Poll) -> serde_json::Result<()> {
+        // See: https://docs.rs/mio/1.0.2/mio/net/struct.TcpStream.html#method.connect
+        self.stream
+            .inner()
+            .take_error()
+            .map_err(serde_json::Error::io)?;
+        match self.stream.inner().peer_addr() {
+            Err(e) if e.kind() == ErrorKind::NotConnected => return Ok(()),
+            Err(e) => return self.handle_error(poller, serde_json::Error::io(e)),
+            Ok(_) => {}
+        }
+
+        self.state = ConnectionState::Connected;
+        self.handle_write(poller, true)?;
+
+        Ok(())
     }
 
     fn handle_write(&mut self, poller: &mut Poll, start_writing: bool) -> serde_json::Result<()> {
