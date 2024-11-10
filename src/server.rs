@@ -69,6 +69,10 @@ where
         self.connections.values()
     }
 
+    pub fn try_recv(&mut self) -> Option<(From, REQ)> {
+        self.requests.pop_front()
+    }
+
     pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> std::io::Result<bool> {
         let token = event.token();
         if token == self.token_start {
@@ -76,6 +80,7 @@ where
             Ok(true)
         } else if let Some(connection) = self.connections.get_mut(&token) {
             connection.handle_event(poller, event, |stream| {
+                // TODO: response error if failed to deserialize
                 let request = stream.read_value()?;
                 self.requests.push_back((From { token }, request));
                 Ok(())

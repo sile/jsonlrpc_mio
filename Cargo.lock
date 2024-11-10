@@ -30,6 +30,7 @@ version = "0.1.0"
 dependencies = [
  "jsonlrpc",
  "mio",
+ "orfail",
  "serde",
  "serde_json",
 ]
@@ -64,6 +65,12 @@ dependencies = [
  "wasi",
  "windows-sys",
 ]
+
+[[package]]
+name = "orfail"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aba2212a0fddd290c8209fb9b0393382435ede29c24a71f245d7fa92f0f3442e"
 
 [[package]]
 name = "proc-macro2"
