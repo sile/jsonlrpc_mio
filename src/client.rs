@@ -35,6 +35,22 @@ impl RpcClientConnection {
     }
 
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, message: &T) -> serde_json::Result<()> {
+        let queue_size = self.send_queue_byte_size();
+        // match self.stream.write_value(message) {
+        //     Err(_e) if self.connecting => {
+        //         // TODO: self.stream.write_to_buf()
+        //         Ok(())
+        //     }
+        //     Err(e) if e.io_error_kind() == Some(std::io::ErrorKind::WouldBlock) => {
+        //         if start_writing {
+        //             self.interest = Some(Interest::READABLE | Interest::WRITABLE);
+        //         }
+        //         Ok(())
+        //     }
+        //     Err(e) => Err(e.into()),
+        //     Ok(_) => Ok(()),
+        // }
+
         // TODO: connect handling
         todo!()
     }
