@@ -60,7 +60,7 @@ impl RpcClientConnection {
         result.map_err(|e| self.handle_error(poller, e))
     }
 
-    pub fn send_queue_byte_size(&self) -> usize {
+    pub fn queued_bytes_len(&self) -> usize {
         self.stream.write_buf().len()
     }
 
@@ -123,10 +123,8 @@ impl RpcClient {
             .map_err(|e| self.handle_error(e))
     }
 
-    pub fn send_queue_byte_size(&self) -> usize {
-        self.connection
-            .as_ref()
-            .map_or(0, |c| c.send_queue_byte_size())
+    pub fn queued_bytes_len(&self) -> usize {
+        self.connection.as_ref().map_or(0, |c| c.queued_bytes_len())
     }
 
     pub fn try_recv(&mut self) -> Option<ResponseObject> {
