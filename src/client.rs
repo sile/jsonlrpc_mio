@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, net::SocketAddr};
 
 use jsonlrpc::{JsonlStream, ResponseObject};
-use mio::{event::Event, net::TcpStream, Poll, Token};
+use mio::{event::Event, net::TcpStream, Interest, Poll, Token};
 use serde::Serialize;
 
 #[derive(Debug)]
@@ -9,6 +9,7 @@ pub struct RpcClientConnection {
     server_addr: SocketAddr,
     token: Token,
     connecting: bool,
+    writing: bool,
     stream: JsonlStream<TcpStream>,
     responses: VecDeque<ResponseObject>,
 }
@@ -21,6 +22,7 @@ impl RpcClientConnection {
             server_addr,
             token,
             connecting: true,
+            writing: false,
             stream: JsonlStream::new(stream),
             responses: VecDeque::new(),
         })
@@ -35,24 +37,27 @@ impl RpcClientConnection {
     }
 
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, message: &T) -> serde_json::Result<()> {
-        let queue_size = self.send_queue_byte_size();
-        // match self.stream.write_value(message) {
-        //     Err(_e) if self.connecting => {
-        //         // TODO: self.stream.write_to_buf()
-        //         Ok(())
-        //     }
-        //     Err(e) if e.io_error_kind() == Some(std::io::ErrorKind::WouldBlock) => {
-        //         if start_writing {
-        //             self.interest = Some(Interest::READABLE | Interest::WRITABLE);
-        //         }
-        //         Ok(())
-        //     }
-        //     Err(e) => Err(e.into()),
-        //     Ok(_) => Ok(()),
-        // }
+        if self.connecting {
+            return self.stream.write_value_to_buf(message);
+        }
 
-        // TODO: connect handling
-        todo!()
+        let result = match self.stream.write_value(message) {
+            Err(e) if e.io_error_kind() == Some(std::io::ErrorKind::WouldBlock) => {
+                if !self.writing {
+                    self.writing = true;
+                    let interests = Interest::READABLE | Interest::WRITABLE;
+                    poller
+                        .registry()
+                        .reregister(self.stream.inner_mut(), self.token, interests)
+                        .map_err(serde_json::Error::io)
+                } else {
+                    Ok(())
+                }
+            }
+            Err(e) => Err(e),
+            Ok(_) => Ok(()),
+        };
+        result.map_err(|e| self.handle_error(poller, e))
     }
 
     pub fn send_queue_byte_size(&self) -> usize {
@@ -65,6 +70,13 @@ impl RpcClientConnection {
 
     pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> serde_json::Result<()> {
         Ok(())
+    }
+
+    fn handle_error(&mut self, poller: &mut Poll, error: serde_json::Error) -> serde_json::Error {
+        if error.is_io() {
+            let _ = poller.registry().deregister(self.stream.inner_mut());
+        }
+        error
     }
 }
 
@@ -108,7 +120,7 @@ impl RpcClient {
             .as_mut()
             .expect("unreachable")
             .send(poller, message)
-            .map_err(|e| self.handle_error(poller, e))
+            .map_err(|e| self.handle_error(e))
     }
 
     pub fn send_queue_byte_size(&self) -> usize {
@@ -126,13 +138,12 @@ impl RpcClient {
             return Ok(());
         };
         c.handle_event(poller, event)
-            .map_err(|e| self.handle_error(poller, e))
+            .map_err(|e| self.handle_error(e))
     }
 
-    fn handle_error(&mut self, poller: &mut Poll, error: serde_json::Error) -> serde_json::Error {
+    fn handle_error(&mut self, error: serde_json::Error) -> serde_json::Error {
         if error.is_io() {
-            let mut c = self.connection.take().expect("unreachable");
-            let _ = poller.registry().deregister(c.stream.inner_mut());
+            self.connection = None;
         }
         error
     }
