@@ -49,6 +49,7 @@ impl Connection {
         self.stream.write_buf().len()
     }
 
+    // TODO: crate private
     pub fn handle_event<F>(
         &mut self,
         poller: &mut Poll,
