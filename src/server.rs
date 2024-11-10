@@ -5,7 +5,7 @@ use std::{
     net::SocketAddr,
 };
 
-use jsonlrpc::JsonlStream;
+use jsonlrpc::RequestObject;
 use mio::{
     event::Event,
     net::{TcpListener, TcpStream},
@@ -13,8 +13,10 @@ use mio::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::connection::{Connection, ConnectionState};
+
 #[derive(Debug)]
-pub struct RpcServer<REQ> {
+pub struct RpcServer<REQ = RequestObject> {
     listen_addr: SocketAddr,
     listener: TcpListener,
     token_start: Token,
@@ -63,7 +65,9 @@ where
         self.listen_addr
     }
 
-    // TODO: connections()
+    pub fn connections(&self) -> impl '_ + Iterator<Item = &Connection> {
+        self.connections.values()
+    }
 
     pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> std::io::Result<bool> {
         let token = event.token();
@@ -71,7 +75,11 @@ where
             self.handle_listener_event(poller)?;
             Ok(true)
         } else if let Some(connection) = self.connections.get_mut(&token) {
-            connection.handle_event(poller, event, &mut self.requests)?;
+            connection.handle_event(poller, event, |stream| {
+                let request = stream.read_value()?;
+                self.requests.push_back((From { token }, request));
+                Ok(())
+            })?;
             Ok(true)
         } else {
             Ok(false)
@@ -87,7 +95,7 @@ where
                     let Some(connection) = self.handle_accepted(poller, stream) else {
                         continue;
                     };
-                    self.connections.insert(connection.token, connection);
+                    self.connections.insert(connection.token(), connection);
                 }
             }
         }
@@ -101,10 +109,7 @@ where
             .registry()
             .register(&mut stream, token, Interest::READABLE)
             .ok()?;
-        Some(Connection {
-            token,
-            stream: JsonlStream::new(stream),
-        })
+        Some(Connection::new(token, stream, ConnectionState::Connected))
     }
 
     fn next_token(&mut self) -> Option<Token> {
@@ -133,57 +138,18 @@ where
         let Some(connection) = self.connections.get_mut(&from.token) else {
             return Ok(false);
         };
-        let token = connection.token;
-        let start_writing = connection.stream.write_buf().len() == 0;
 
-        if connection.stream.write_value_to_buf(response).is_err() {
-            self.disconnect(poller, token)?;
-            return Ok(false);
-        }
-
-        if connection.handle_write(poller, start_writing).is_none() {
-            self.disconnect(poller, token)?;
+        let token = connection.token();
+        if connection.send(poller, response).is_err() {
+            let _ = self.connections.remove(&token);
             return Ok(false);
         }
 
         Ok(true)
-    }
-
-    fn disconnect(&mut self, poller: &mut Poll, token: Token) -> std::io::Result<()> {
-        let mut connection = self.connections.remove(&token).expect("unreachable");
-        poller
-            .registry()
-            .deregister(connection.stream.inner_mut())?;
-        Ok(())
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct From {
     token: Token,
-}
-
-// TODO(?): RpcServerConnection
-#[derive(Debug)]
-struct Connection {
-    token: Token,
-    stream: JsonlStream<TcpStream>,
-}
-
-impl Connection {
-    fn handle_event<REQ>(
-        &mut self,
-        poller: &mut Poll,
-        event: &Event,
-        requests: &mut VecDeque<(From, REQ)>,
-    ) -> std::io::Result<()>
-    where
-        REQ: for<'de> Deserialize<'de>,
-    {
-        todo!()
-    }
-
-    fn handle_write(&mut self, poller: &mut Poll, start_writing: bool) -> Option<()> {
-        todo!()
-    }
 }
