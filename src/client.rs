@@ -8,7 +8,7 @@ use serde::Serialize;
 pub struct RpcClientConnection {
     server_addr: SocketAddr,
     token: Token,
-    is_connected: bool,
+    connecting: bool,
     stream: JsonlStream<TcpStream>,
     responses: VecDeque<ResponseObject>,
 }
@@ -20,7 +20,7 @@ impl RpcClientConnection {
         Ok(Self {
             server_addr,
             token,
-            is_connected: false,
+            connecting: true,
             stream: JsonlStream::new(stream),
             responses: VecDeque::new(),
         })
@@ -28,6 +28,10 @@ impl RpcClientConnection {
 
     pub fn server_addr(&self) -> SocketAddr {
         self.server_addr
+    }
+
+    pub fn token(&self) -> Token {
+        self.token
     }
 
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, message: &T) -> serde_json::Result<()> {
@@ -39,7 +43,6 @@ impl RpcClientConnection {
         self.stream.write_buf().len()
     }
 
-    // TODO: disconnected handling
     pub fn try_recv(&mut self) -> Option<ResponseObject> {
         self.responses.pop_front()
     }
@@ -71,6 +74,10 @@ impl RpcClient {
 
     pub fn token(&self) -> Token {
         self.token
+    }
+
+    pub fn connection(&self) -> Option<&RpcClientConnection> {
+        self.connection.as_ref()
     }
 
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, message: &T) -> serde_json::Result<()> {

@@ -76,7 +76,7 @@ impl Connection {
     }
 
     pub fn send<T: Serialize>(&mut self, msg: &T) -> serde_json::Result<()> {
-        self.stream.write_object(msg)
+        self.stream.write_value(msg)
     }
 
     pub fn send_queue_size(&self) -> usize {
