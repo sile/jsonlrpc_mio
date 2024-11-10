@@ -49,7 +49,15 @@ impl Connection {
         self.stream.write_buf().len()
     }
 
-    pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> serde_json::Result<()> {
+    pub fn handle_event<F>(
+        &mut self,
+        poller: &mut Poll,
+        event: &Event,
+        on_read: F,
+    ) -> serde_json::Result<()>
+    where
+        F: FnOnce(&mut JsonlStream<TcpStream>) -> serde_json::Result<()>,
+    {
         debug_assert_eq!(self.token, event.token());
         self.check_not_closed()?;
 
@@ -58,6 +66,9 @@ impl Connection {
         }
         if event.is_writable() {
             self.handle_write(poller, false)?;
+        }
+        if event.is_readable() {
+            on_read(&mut self.stream).or_else(|e| self.handle_error(poller, e))?;
         }
         Ok(())
     }
