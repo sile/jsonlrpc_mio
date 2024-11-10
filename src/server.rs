@@ -58,6 +58,8 @@ where
         self.listen_addr
     }
 
+    // TODO: connections()
+
     pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> std::io::Result<bool> {
         let token = event.token();
         if token == self.token_start {
@@ -89,6 +91,7 @@ pub struct From {
     token: Token,
 }
 
+// TODO(?): RpcServerConnection
 #[derive(Debug)]
 struct Connection {}
 
