@@ -10,7 +10,7 @@ pub use self::server::RpcServer;
 mod tests {
     use std::{net::SocketAddr, time::Duration};
 
-    use jsonlrpc::{RequestId, RequestObject, ResponseObject};
+    use jsonlrpc::{ErrorCode, RequestId, RequestObject, ResponseObject};
     use mio::{Events, Poll, Token};
     use orfail::OrFail;
 
@@ -49,7 +49,6 @@ mod tests {
                 .poll(&mut events, Some(Duration::from_millis(100)))
                 .or_fail()?;
             for event in events.iter() {
-                dbg!(event);
                 if server.handle_event(&mut poller, event).or_fail()? {
                     if let Some((from, request)) = server.try_recv() {
                         assert_eq!(request.method, "ping");
@@ -76,6 +75,79 @@ mod tests {
             }
         }
         assert!(success);
+
+        Ok(())
+    }
+
+    #[test]
+    fn wrong_requests() -> orfail::Result<()> {
+        let mut poller = Poll::new().or_fail()?;
+        let mut events = Events::with_capacity(1024);
+
+        let mut server: RpcServer = RpcServer::start(
+            &mut poller,
+            SocketAddr::from(([127, 0, 0, 1], 0)),
+            SERVER_TOKEN_START,
+            SERVER_TOKEN_END,
+        )
+        .or_fail()?;
+        let mut client = RpcClient::new(CLIENT_TOKEN, server.listen_addr());
+
+        // Not a JSON object
+        client.send(&mut poller, &"ping").or_fail()?;
+
+        let mut success = false;
+        'root: for _ in 0..10 {
+            poller
+                .poll(&mut events, Some(Duration::from_millis(100)))
+                .or_fail()?;
+            for event in events.iter() {
+                if server.handle_event(&mut poller, event).or_fail()? {
+                    assert_eq!(None, server.try_recv());
+                    continue;
+                }
+
+                client.handle_event(&mut poller, event).or_fail()?;
+                if let Some(response) = client.try_recv() {
+                    let ResponseObject::Err { error, .. } = response else {
+                        panic!("{response:?}");
+                    };
+                    assert_eq!(error.code, ErrorCode::INVALID_REQUEST);
+                    success = true;
+                    break 'root;
+                }
+            }
+        }
+        assert!(success);
+        assert_eq!(0, server.connections().count());
+
+        // Not a JSON value
+        client.send(&mut poller, &"ping").or_fail()?;
+
+        let mut success = false;
+        'root: for _ in 0..10 {
+            poller
+                .poll(&mut events, Some(Duration::from_millis(100)))
+                .or_fail()?;
+            for event in events.iter() {
+                if server.handle_event(&mut poller, event).or_fail()? {
+                    assert_eq!(None, server.try_recv());
+                    continue;
+                }
+
+                client.handle_event(&mut poller, event).or_fail()?;
+                if let Some(response) = client.try_recv() {
+                    let ResponseObject::Err { error, .. } = response else {
+                        panic!("{response:?}");
+                    };
+                    assert_eq!(error.code, ErrorCode::INVALID_REQUEST);
+                    success = true;
+                    break 'root;
+                }
+            }
+        }
+        assert!(success);
+        assert_eq!(0, server.connections().count());
 
         Ok(())
     }

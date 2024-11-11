@@ -57,7 +57,7 @@ impl Connection {
         on_read: F,
     ) -> serde_json::Result<()>
     where
-        F: FnOnce(&mut JsonlStream<TcpStream>) -> serde_json::Result<()>,
+        F: FnOnce(&mut Self, &mut Poll) -> serde_json::Result<()>,
     {
         debug_assert_eq!(self.token, event.token());
         self.check_not_closed()?;
@@ -76,9 +76,9 @@ impl Connection {
 
     fn handle_read<F>(&mut self, poller: &mut Poll, on_read: F) -> serde_json::Result<()>
     where
-        F: FnOnce(&mut JsonlStream<TcpStream>) -> serde_json::Result<()>,
+        F: FnOnce(&mut Self, &mut Poll) -> serde_json::Result<()>,
     {
-        on_read(&mut self.stream).or_else(|e| self.handle_error(poller, e))
+        on_read(self, poller).or_else(|e| self.handle_error(poller, e))
     }
 
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, request: &T) -> serde_json::Result<()> {
@@ -94,6 +94,10 @@ impl Connection {
         }
 
         self.handle_write(poller, start_writing)
+    }
+
+    pub(crate) fn stream_mut(&mut self) -> &mut JsonlStream<TcpStream> {
+        &mut self.stream
     }
 
     fn check_not_closed(&mut self) -> serde_json::Result<()> {

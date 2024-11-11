@@ -71,8 +71,8 @@ impl RpcClient {
         let Some(c) = &mut self.connection else {
             return Ok(());
         };
-        c.handle_event(poller, event, |stream| {
-            let response = stream.read_value()?;
+        c.handle_event(poller, event, |c, _poller| {
+            let response = c.stream_mut().read_value()?;
             self.responses.push_back(response);
             Ok(())
         })

@@ -5,7 +5,7 @@ use std::{
     net::SocketAddr,
 };
 
-use jsonlrpc::RequestObject;
+use jsonlrpc::{ErrorCode, ErrorObject, RequestObject, ResponseObject};
 use mio::{
     event::Event,
     net::{TcpListener, TcpStream},
@@ -79,12 +79,69 @@ where
             self.handle_listener_event(poller)?;
             Ok(true)
         } else if let Some(connection) = self.connections.get_mut(&token) {
-            connection.handle_event(poller, event, |stream| {
-                // TODO: response error if failed to deserialize
-                let request = stream.read_value()?;
-                self.requests.push_back((From { token }, request));
-                Ok(())
+            let mut closed = false;
+            connection.handle_event(poller, event, |c, poller| {
+                match c.stream_mut().read_value::<REQ>() {
+                    Err(e) if e.is_io() => {
+                        c.close(poller);
+                        closed = true;
+                        Ok(())
+                    }
+                    Err(e) => {
+                        let line = c
+                            .stream_mut()
+                            .read_buf()
+                            .splitn(2, |b| *b == b'\n')
+                            .next()
+                            .unwrap_or(b"");
+                        let response =
+                            if let Ok(request) = serde_json::from_slice::<RequestObject>(line) {
+                                ResponseObject::Err {
+                                    jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+                                    error: ErrorObject {
+                                        code: ErrorCode::INVALID_PARAMS,
+                                        message: e.to_string(),
+                                        data: None,
+                                    },
+                                    id: request.id,
+                                }
+                            } else if serde_json::from_slice::<serde_json::Value>(line).is_ok() {
+                                ResponseObject::Err {
+                                    jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+                                    error: ErrorObject {
+                                        code: ErrorCode::INVALID_REQUEST,
+                                        message: e.to_string(),
+                                        data: None,
+                                    },
+                                    id: None,
+                                }
+                            } else {
+                                ResponseObject::Err {
+                                    jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+                                    error: ErrorObject {
+                                        code: ErrorCode::PARSE_ERROR,
+                                        message: e.to_string(),
+                                        data: None,
+                                    },
+                                    id: None,
+                                }
+                            };
+                        let _ = c.send(poller, &response)?;
+                        c.close(poller);
+                        closed = true;
+                        Ok(())
+                    }
+                    Ok(request) => {
+                        self.requests.push_back((From { token }, request));
+                        Ok(())
+                    }
+                }
             })?;
+
+            if closed {
+                let _ = self.connections.remove(&token);
+            }
+
             Ok(true)
         } else {
             Ok(false)
