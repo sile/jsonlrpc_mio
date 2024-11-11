@@ -80,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    fn wrong_requests() -> orfail::Result<()> {
+    fn invalid_request() -> orfail::Result<()> {
         let mut poller = Poll::new().or_fail()?;
         let mut events = Events::with_capacity(1024);
 
@@ -91,37 +91,8 @@ mod tests {
             SERVER_TOKEN_END,
         )
         .or_fail()?;
+
         let mut client = RpcClient::new(CLIENT_TOKEN, server.listen_addr());
-
-        // Not a JSON object
-        client.send(&mut poller, &"ping").or_fail()?;
-
-        let mut success = false;
-        'root: for _ in 0..10 {
-            poller
-                .poll(&mut events, Some(Duration::from_millis(100)))
-                .or_fail()?;
-            for event in events.iter() {
-                if server.handle_event(&mut poller, event).or_fail()? {
-                    assert_eq!(None, server.try_recv());
-                    continue;
-                }
-
-                client.handle_event(&mut poller, event).or_fail()?;
-                if let Some(response) = client.try_recv() {
-                    let ResponseObject::Err { error, .. } = response else {
-                        panic!("{response:?}");
-                    };
-                    assert_eq!(error.code, ErrorCode::INVALID_REQUEST);
-                    success = true;
-                    break 'root;
-                }
-            }
-        }
-        assert!(success);
-        assert_eq!(0, server.connections().count());
-
-        // Not a JSON value
         client.send(&mut poller, &"ping").or_fail()?;
 
         let mut success = false;
