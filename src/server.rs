@@ -37,7 +37,7 @@ where
         token_start: Token,
         token_end: Token,
     ) -> std::io::Result<Self> {
-        if !(token_start < token_end) {
+        if token_start >= token_end {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidInput,
                 "Empty token range",
