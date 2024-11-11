@@ -33,15 +33,13 @@ impl RpcClient {
         self.server_addr
     }
 
+    /// Returns the `mio` token assigned to this client.
     pub fn token(&self) -> Token {
         self.token
     }
 
-    pub fn connection(&self) -> Option<&Connection> {
-        self.connection.as_ref()
-    }
-
-    pub fn send<T: Serialize>(&mut self, poller: &mut Poll, message: &T) -> serde_json::Result<()> {
+    /// Starts sending a JSON-RPC request to the RPC server.
+    pub fn send<T: Serialize>(&mut self, poller: &mut Poll, request: &T) -> serde_json::Result<()> {
         if self.connection.is_none() {
             self.responses.clear();
 
@@ -60,18 +58,21 @@ impl RpcClient {
         self.connection
             .as_mut()
             .expect("unreachable")
-            .send(poller, message)
+            .send(poller, request)
             .map_err(|e| self.handle_error(e))
     }
 
+    /// Returns the number of bytes enqueued by [`RpcClient::send()`] that have not yet been written to the TCP socket (e.g., as the send buffer is full).
     pub fn queued_bytes_len(&self) -> usize {
         self.connection.as_ref().map_or(0, |c| c.queued_bytes_len())
     }
 
+    /// Takes a JSON-RPC response from the receive queue.
     pub fn try_recv(&mut self) -> Option<ResponseObject> {
         self.responses.pop_front()
     }
 
+    /// Handles an `mio` event.
     pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> serde_json::Result<()> {
         let Some(c) = &mut self.connection else {
             return Ok(());
@@ -84,7 +85,18 @@ impl RpcClient {
         .map_err(|e| self.handle_error(e))
     }
 
-    // TOOD: fn close()
+    /// Returns a reference to the internal TCP connection.
+    pub fn connection(&self) -> Option<&Connection> {
+        self.connection.as_ref()
+    }
+
+    /// Closes the internal TCP connection if it has been established.
+    pub fn close(&mut self, poller: &mut Poll) {
+        let Some(c) = &mut self.connection else {
+            return;
+        };
+        c.close(poller);
+    }
 
     fn handle_error(&mut self, error: serde_json::Error) -> serde_json::Error {
         if error.is_io() {
