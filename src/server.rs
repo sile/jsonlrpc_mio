@@ -108,13 +108,13 @@ where
     }
 
     fn handle_accepted(&mut self, poller: &mut Poll, mut stream: TcpStream) -> Option<Connection> {
-        stream.set_nodelay(true).ok()?;
         let token = self.next_token()?;
         poller
             .registry()
             .register(&mut stream, token, Interest::READABLE)
             .ok()?;
-        Some(Connection::new(token, stream, ConnectionState::Connected))
+        let connection = Connection::new(token, stream, ConnectionState::Connected);
+        Some(connection)
     }
 
     fn next_token(&mut self) -> Option<Token> {

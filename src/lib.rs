@@ -8,7 +8,7 @@ pub use self::server::RpcServer;
 
 #[cfg(test)]
 mod tests {
-    use std::net::SocketAddr;
+    use std::{net::SocketAddr, time::Duration};
 
     use jsonlrpc::{RequestId, RequestObject, ResponseObject};
     use mio::{Events, Poll, Token};
@@ -43,10 +43,14 @@ mod tests {
         };
         client.send(&mut poller, &request).or_fail()?;
 
-        'root: loop {
-            poller.poll(&mut events, None).or_fail()?;
+        let mut success = false;
+        'root: for _ in 0..10 {
+            poller
+                .poll(&mut events, Some(Duration::from_millis(100)))
+                .or_fail()?;
             for event in events.iter() {
-                if server.handle_event(&mut poller, &event).or_fail()? {
+                dbg!(event);
+                if server.handle_event(&mut poller, event).or_fail()? {
                     if let Some((from, request)) = server.try_recv() {
                         assert_eq!(request.method, "ping");
                         let response = ResponseObject::Ok {
@@ -59,17 +63,19 @@ mod tests {
                     continue;
                 }
 
-                client.handle_event(&mut poller, &event).or_fail()?;
+                client.handle_event(&mut poller, event).or_fail()?;
                 if let Some(response) = client.try_recv() {
                     assert_eq!(response.id(), Some(&request_id));
                     let Ok(value) = response.into_std_result() else {
                         panic!();
                     };
                     assert_eq!(value, serde_json::json! { "pong" });
+                    success = true;
                     break 'root;
                 }
             }
         }
+        assert!(success);
 
         Ok(())
     }

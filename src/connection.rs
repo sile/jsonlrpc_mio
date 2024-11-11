@@ -69,9 +69,16 @@ impl Connection {
             self.handle_write(poller, false)?;
         }
         if event.is_readable() {
-            on_read(&mut self.stream).or_else(|e| self.handle_error(poller, e))?;
+            self.handle_read(poller, on_read)?;
         }
         Ok(())
+    }
+
+    fn handle_read<F>(&mut self, poller: &mut Poll, on_read: F) -> serde_json::Result<()>
+    where
+        F: FnOnce(&mut JsonlStream<TcpStream>) -> serde_json::Result<()>,
+    {
+        on_read(&mut self.stream).or_else(|e| self.handle_error(poller, e))
     }
 
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, request: &T) -> serde_json::Result<()> {
@@ -110,7 +117,7 @@ impl Connection {
         }
 
         self.state = ConnectionState::Connected;
-        self.handle_write(poller, true)?;
+        self.handle_write(poller, false)?;
 
         Ok(())
     }
