@@ -126,7 +126,7 @@ where
                                     id: None,
                                 }
                             };
-                        let _ = c.send(poller, &response)?;
+                        let _ = c.send(poller, &response);
                         c.close(poller);
                         closed = true;
                         Ok(())
