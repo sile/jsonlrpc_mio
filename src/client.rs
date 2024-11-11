@@ -43,11 +43,7 @@ impl RpcClient {
             let mut stream = TcpStream::connect(self.server_addr).map_err(serde_json::Error::io)?;
             poller
                 .registry()
-                .register(
-                    &mut stream,
-                    self.token,
-                    Interest::READABLE | Interest::WRITABLE,
-                )
+                .register(&mut stream, self.token, Interest::WRITABLE)
                 .map_err(serde_json::Error::io)?;
             self.connection = Some(Connection::new(
                 self.token,
