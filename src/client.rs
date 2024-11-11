@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::connection::{Connection, ConnectionState};
 
+/// RPC client.
 #[derive(Debug)]
 pub struct RpcClient {
     server_addr: SocketAddr,
@@ -15,6 +16,9 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
+    /// Makes a new instance of [`RpcClient`].
+    ///
+    /// If not already connected, this client will establish a connection to the specified server when [`RpcClient::send()`] is called.
     pub fn new(token: Token, server_addr: SocketAddr) -> Self {
         Self {
             server_addr,
@@ -24,6 +28,7 @@ impl RpcClient {
         }
     }
 
+    /// Returns the address of the RPC server to which this client sends requests.
     pub fn server_addr(&self) -> SocketAddr {
         self.server_addr
     }

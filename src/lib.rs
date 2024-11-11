@@ -1,3 +1,8 @@
+//! Non-blocking [`jsonlrpc`] server and client using [`mio`].
+//!
+//! [`jsonlrpc`]: https://crates.io/crates/jsonlrpc
+//! [`mio`]: https://crates.io/crates/mio
+#![warn(missing_docs)]
 mod client;
 mod connection;
 mod server;
