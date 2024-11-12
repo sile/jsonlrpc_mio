@@ -75,9 +75,9 @@ mod tests {
 
     use super::*;
 
-    const SERVER_TOKEN_START: Token = Token(0);
-    const SERVER_TOKEN_END: Token = Token(100);
-    const CLIENT_TOKEN: Token = Token(101);
+    const SERVER_TOKEN_MIN: Token = Token(0);
+    const SERVER_TOKEN_MAX: Token = Token(99);
+    const CLIENT_TOKEN: Token = Token(100);
 
     #[test]
     fn base_server_and_client() -> orfail::Result<()> {
@@ -87,8 +87,8 @@ mod tests {
         let mut server: RpcServer = RpcServer::start(
             &mut poller,
             SocketAddr::from(([127, 0, 0, 1], 0)),
-            SERVER_TOKEN_START,
-            SERVER_TOKEN_END,
+            SERVER_TOKEN_MIN,
+            SERVER_TOKEN_MAX,
         )
         .or_fail()?;
         let mut client = RpcClient::new(CLIENT_TOKEN, server.listen_addr());
@@ -189,8 +189,8 @@ mod tests {
         let mut server: RpcServer = RpcServer::start(
             &mut poller,
             SocketAddr::from(([127, 0, 0, 1], 0)),
-            SERVER_TOKEN_START,
-            SERVER_TOKEN_END,
+            SERVER_TOKEN_MIN,
+            SERVER_TOKEN_MAX,
         )
         .or_fail()?;
 
