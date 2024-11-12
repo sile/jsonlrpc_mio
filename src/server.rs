@@ -20,8 +20,8 @@ use crate::connection::{Connection, ConnectionState};
 pub struct RpcServer<REQ = RequestObject> {
     listen_addr: SocketAddr,
     listener: TcpListener,
-    token_start: Token,
-    token_end: Token,
+    token_min: Token,
+    token_max: Token,
     next_token: Token,
     connections: HashMap<Token, Connection>,
     requests: VecDeque<(From, REQ)>,
@@ -36,10 +36,10 @@ where
     pub fn start(
         poller: &mut Poll,
         listen_addr: SocketAddr,
-        token_start: Token,
-        token_end: Token,
+        token_min: Token,
+        token_max: Token,
     ) -> std::io::Result<Self> {
-        if token_start >= token_end {
+        if token_min > token_max {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidInput,
                 "Empty token range",
@@ -50,13 +50,13 @@ where
         let listen_addr = listener.local_addr()?;
         poller
             .registry()
-            .register(&mut listener, token_start, Interest::READABLE)?;
+            .register(&mut listener, token_min, Interest::READABLE)?;
         Ok(Self {
             listen_addr,
             listener,
-            token_start,
-            token_end,
-            next_token: Token(token_start.0 + 1),
+            token_min,
+            token_max,
+            next_token: Token(token_min.0 + 1),
             connections: HashMap::new(),
             requests: VecDeque::new(),
             _request: PhantomData,
@@ -96,7 +96,7 @@ where
     /// Handles an `mio` event.
     pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> std::io::Result<()> {
         let token = event.token();
-        if token == self.token_start {
+        if token == self.token_min {
             self.handle_listener_event(poller)?;
             return Ok(());
         }
@@ -202,15 +202,16 @@ where
     }
 
     fn next_token(&mut self) -> Option<Token> {
-        if self.token_end.0 - self.token_start.0 == self.connections.len() + 1 {
+        if self.token_max.0 - self.token_min.0 == self.connections.len() {
             return None;
         }
 
         loop {
             let token = self.next_token;
-            self.next_token.0 += 1;
-            if self.next_token == self.token_end {
-                self.next_token.0 = self.token_start.0 + 1;
+            if self.next_token == self.token_max {
+                self.next_token.0 = self.token_min.0 + 1; // `+1` is to skip the server token
+            } else {
+                self.next_token.0 += 1;
             }
             if !self.connections.contains_key(&token) {
                 return Some(token);

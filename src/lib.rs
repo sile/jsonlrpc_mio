@@ -83,6 +83,55 @@ mod tests {
     }
 
     #[test]
+    fn for_example() -> std::io::Result<()> {
+        let mut poller = Poll::new()?;
+        let mut events = Events::with_capacity(1024);
+
+        let mut server: RpcServer = RpcServer::start(
+            &mut poller,
+            SocketAddr::from(([127, 0, 0, 1], 0)),
+            Token(0),
+            Token(9),
+        )?;
+        let mut client = RpcClient::new(CLIENT_TOKEN, server.listen_addr());
+
+        let request_id = RequestId::Number(123);
+        let request = RequestObject {
+            jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+            method: "ping".to_owned(),
+            params: None,
+            id: Some(request_id.clone()),
+        };
+        client.send(&mut poller, &request)?;
+
+        loop {
+            poller.poll(&mut events, None)?;
+            for event in events.iter() {
+                server.handle_event(&mut poller, event)?;
+                if let Some((from, request)) = server.try_recv() {
+                    assert_eq!(request.method, "ping");
+                    let response = ResponseObject::Ok {
+                        jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+                        result: serde_json::json! { "pong" },
+                        id: request_id.clone(),
+                    };
+                    server.reply(&mut poller, from, &response)?;
+                }
+
+                client.handle_event(&mut poller, event)?;
+                if let Some(response) = client.try_recv() {
+                    assert_eq!(response.id(), Some(&request_id));
+                    let Ok(value) = response.into_std_result() else {
+                        panic!();
+                    };
+                    assert_eq!(value, serde_json::json! { "pong" });
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn invalid_request() -> orfail::Result<()> {
         let mut poller = Poll::new().or_fail()?;
         let mut events = Events::with_capacity(1024);
