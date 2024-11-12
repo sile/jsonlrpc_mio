@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::connection::{Connection, ConnectionState};
 
+/// RPC server.
 #[derive(Debug)]
 pub struct RpcServer<REQ = RequestObject> {
     listen_addr: SocketAddr,
@@ -31,6 +32,7 @@ impl<REQ> RpcServer<REQ>
 where
     REQ: for<'de> Deserialize<'de>,
 {
+    /// Starts an [`RpcServer`] that listens on the specified address.
     pub fn start(
         poller: &mut Poll,
         listen_addr: SocketAddr,
@@ -61,91 +63,116 @@ where
         })
     }
 
+    /// Returns the address on which this server is listening.
     pub fn listen_addr(&self) -> SocketAddr {
         self.listen_addr
     }
 
-    pub fn connections(&self) -> impl '_ + Iterator<Item = &Connection> {
-        self.connections.values()
-    }
-
+    /// Takes a JSON-RPC request from the receive queue.
     pub fn try_recv(&mut self) -> Option<(From, REQ)> {
         self.requests.pop_front()
     }
 
-    pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> std::io::Result<bool> {
+    /// Sends a JSON-RPC response.
+    pub fn reply<T: Serialize>(
+        &mut self,
+        poller: &mut Poll,
+        from: From,
+        response: &T,
+    ) -> std::io::Result<bool> {
+        let Some(connection) = self.connections.get_mut(&from.token) else {
+            return Ok(false);
+        };
+
+        let token = connection.token();
+        if connection.send(poller, response).is_err() {
+            let _ = self.connections.remove(&token);
+            return Ok(false);
+        }
+
+        Ok(true)
+    }
+
+    /// Handles an `mio` event.
+    pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> std::io::Result<()> {
         let token = event.token();
         if token == self.token_start {
             self.handle_listener_event(poller)?;
-            Ok(true)
-        } else if let Some(connection) = self.connections.get_mut(&token) {
-            let mut closed = false;
-            connection.handle_event(poller, event, |c, poller| {
-                match c.stream_mut().read_value::<REQ>() {
-                    Err(e) if e.is_io() => {
-                        c.close(poller);
-                        closed = true;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        let line = c
-                            .stream_mut()
-                            .read_buf()
-                            .splitn(2, |b| *b == b'\n')
-                            .next()
-                            .unwrap_or(b"");
-                        let response =
-                            if let Ok(request) = serde_json::from_slice::<RequestObject>(line) {
-                                ResponseObject::Err {
-                                    jsonrpc: jsonlrpc::JsonRpcVersion::V2,
-                                    error: ErrorObject {
-                                        code: ErrorCode::INVALID_PARAMS,
-                                        message: e.to_string(),
-                                        data: None,
-                                    },
-                                    id: request.id,
-                                }
-                            } else if serde_json::from_slice::<serde_json::Value>(line).is_ok() {
-                                ResponseObject::Err {
-                                    jsonrpc: jsonlrpc::JsonRpcVersion::V2,
-                                    error: ErrorObject {
-                                        code: ErrorCode::INVALID_REQUEST,
-                                        message: e.to_string(),
-                                        data: None,
-                                    },
-                                    id: None,
-                                }
-                            } else {
-                                ResponseObject::Err {
-                                    jsonrpc: jsonlrpc::JsonRpcVersion::V2,
-                                    error: ErrorObject {
-                                        code: ErrorCode::PARSE_ERROR,
-                                        message: e.to_string(),
-                                        data: None,
-                                    },
-                                    id: None,
-                                }
-                            };
-                        let _ = c.send(poller, &response);
-                        c.close(poller);
-                        closed = true;
-                        Ok(())
-                    }
-                    Ok(request) => {
-                        self.requests.push_back((From { token }, request));
-                        Ok(())
-                    }
-                }
-            })?;
-
-            if closed {
-                let _ = self.connections.remove(&token);
-            }
-
-            Ok(true)
-        } else {
-            Ok(false)
+            return Ok(());
         }
+
+        let Some(connection) = self.connections.get_mut(&token) else {
+            return Ok(());
+        };
+
+        let mut closed = false;
+        connection.handle_event(poller, event, |c, poller| {
+            match c.stream_mut().read_value::<REQ>() {
+                Err(e) if e.is_io() => {
+                    c.close(poller);
+                    closed = true;
+                    Ok(())
+                }
+                Err(e) => {
+                    let line = c
+                        .stream_mut()
+                        .read_buf()
+                        .splitn(2, |b| *b == b'\n')
+                        .next()
+                        .unwrap_or(b"");
+                    let response =
+                        if let Ok(request) = serde_json::from_slice::<RequestObject>(line) {
+                            ResponseObject::Err {
+                                jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+                                error: ErrorObject {
+                                    code: ErrorCode::INVALID_PARAMS,
+                                    message: e.to_string(),
+                                    data: None,
+                                },
+                                id: request.id,
+                            }
+                        } else if serde_json::from_slice::<serde_json::Value>(line).is_ok() {
+                            ResponseObject::Err {
+                                jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+                                error: ErrorObject {
+                                    code: ErrorCode::INVALID_REQUEST,
+                                    message: e.to_string(),
+                                    data: None,
+                                },
+                                id: None,
+                            }
+                        } else {
+                            ResponseObject::Err {
+                                jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+                                error: ErrorObject {
+                                    code: ErrorCode::PARSE_ERROR,
+                                    message: e.to_string(),
+                                    data: None,
+                                },
+                                id: None,
+                            }
+                        };
+                    let _ = c.send(poller, &response);
+                    c.close(poller);
+                    closed = true;
+                    Ok(())
+                }
+                Ok(request) => {
+                    self.requests.push_back((From { token }, request));
+                    Ok(())
+                }
+            }
+        })?;
+
+        if closed {
+            let _ = self.connections.remove(&token);
+        }
+        Ok(())
+    }
+
+    /// Returns client connections.
+    pub fn connections(&self) -> impl '_ + Iterator<Item = &Connection> {
+        self.connections.values()
     }
 
     fn handle_listener_event(&mut self, poller: &mut Poll) -> std::io::Result<()> {
@@ -190,27 +217,9 @@ where
             }
         }
     }
-
-    pub fn reply<T: Serialize>(
-        &mut self,
-        poller: &mut Poll,
-        from: From,
-        response: &T,
-    ) -> std::io::Result<bool> {
-        let Some(connection) = self.connections.get_mut(&from.token) else {
-            return Ok(false);
-        };
-
-        let token = connection.token();
-        if connection.send(poller, response).is_err() {
-            let _ = self.connections.remove(&token);
-            return Ok(false);
-        }
-
-        Ok(true)
-    }
 }
 
+/// Sender of an RPC request.
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct From {
     token: Token,

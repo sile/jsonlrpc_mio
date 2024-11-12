@@ -9,7 +9,7 @@ mod server;
 
 pub use self::client::RpcClient;
 pub use self::connection::{Connection, ConnectionState};
-pub use self::server::RpcServer;
+pub use self::server::{From, RpcServer};
 
 #[cfg(test)]
 mod tests {
@@ -54,17 +54,15 @@ mod tests {
                 .poll(&mut events, Some(Duration::from_millis(100)))
                 .or_fail()?;
             for event in events.iter() {
-                if server.handle_event(&mut poller, event).or_fail()? {
-                    if let Some((from, request)) = server.try_recv() {
-                        assert_eq!(request.method, "ping");
-                        let response = ResponseObject::Ok {
-                            jsonrpc: jsonlrpc::JsonRpcVersion::V2,
-                            result: serde_json::json! { "pong" },
-                            id: request_id.clone(),
-                        };
-                        server.reply(&mut poller, from, &response).or_fail()?;
-                    }
-                    continue;
+                server.handle_event(&mut poller, event).or_fail()?;
+                if let Some((from, request)) = server.try_recv() {
+                    assert_eq!(request.method, "ping");
+                    let response = ResponseObject::Ok {
+                        jsonrpc: jsonlrpc::JsonRpcVersion::V2,
+                        result: serde_json::json! { "pong" },
+                        id: request_id.clone(),
+                    };
+                    server.reply(&mut poller, from, &response).or_fail()?;
                 }
 
                 client.handle_event(&mut poller, event).or_fail()?;
@@ -106,10 +104,8 @@ mod tests {
                 .poll(&mut events, Some(Duration::from_millis(100)))
                 .or_fail()?;
             for event in events.iter() {
-                if server.handle_event(&mut poller, event).or_fail()? {
-                    assert_eq!(None, server.try_recv());
-                    continue;
-                }
+                server.handle_event(&mut poller, event).or_fail()?;
+                assert_eq!(None, server.try_recv());
 
                 client.handle_event(&mut poller, event).or_fail()?;
                 if let Some(response) = client.try_recv() {

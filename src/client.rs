@@ -38,7 +38,7 @@ impl RpcClient {
         self.token
     }
 
-    /// Starts sending a JSON-RPC request to the RPC server.
+    /// Sends a JSON-RPC request to the RPC server.
     pub fn send<T: Serialize>(&mut self, poller: &mut Poll, request: &T) -> serde_json::Result<()> {
         if self.connection.is_none() {
             self.responses.clear();
@@ -74,6 +74,9 @@ impl RpcClient {
 
     /// Handles an `mio` event.
     pub fn handle_event(&mut self, poller: &mut Poll, event: &Event) -> serde_json::Result<()> {
+        if event.token() != self.token {
+            return Ok(());
+        }
         let Some(c) = &mut self.connection else {
             return Ok(());
         };
