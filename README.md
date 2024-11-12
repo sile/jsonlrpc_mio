@@ -14,7 +14,7 @@ Non-blocking [`jsonlrpc`] server and client using [`mio`].
 Examples
 --------
 
-```
+```rust
 use std::net::SocketAddr;
 
 use jsonlrpc::{RequestId, RequestObject, ResponseObject};
