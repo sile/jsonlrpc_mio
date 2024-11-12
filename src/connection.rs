@@ -4,6 +4,8 @@ use jsonlrpc::JsonlStream;
 use mio::{event::Event, net::TcpStream, Interest, Poll, Token};
 use serde::Serialize;
 
+/// TCP connection state.
+#[allow(missing_docs)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ConnectionState {
     Connecting,
@@ -11,6 +13,7 @@ pub enum ConnectionState {
     Closed,
 }
 
+/// TCP connection.
 #[derive(Debug)]
 pub struct Connection {
     token: Token,
@@ -28,15 +31,22 @@ impl Connection {
         }
     }
 
+    /// Returns the `mio` token assigned to this connection.
     pub fn token(&self) -> Token {
         self.token
     }
 
+    /// Returns the state of this connection.
     pub fn state(&self) -> ConnectionState {
         self.state
     }
 
-    pub fn close(&mut self, poller: &mut Poll) {
+    /// Returns a reference to the internal TCP stream.
+    pub fn stream(&self) -> &TcpStream {
+        self.stream.inner()
+    }
+
+    pub(crate) fn close(&mut self, poller: &mut Poll) {
         if self.state != ConnectionState::Closed {
             return;
         }
@@ -45,12 +55,11 @@ impl Connection {
         let _ = self.stream.inner().shutdown(Shutdown::Both);
     }
 
-    pub fn queued_bytes_len(&self) -> usize {
+    pub(crate) fn queued_bytes_len(&self) -> usize {
         self.stream.write_buf().len()
     }
 
-    // TODO: crate private
-    pub fn handle_event<F>(
+    pub(crate) fn handle_event<F>(
         &mut self,
         poller: &mut Poll,
         event: &Event,
@@ -81,7 +90,11 @@ impl Connection {
         on_read(self, poller).or_else(|e| self.handle_error(poller, e))
     }
 
-    pub fn send<T: Serialize>(&mut self, poller: &mut Poll, request: &T) -> serde_json::Result<()> {
+    pub(crate) fn send<T: Serialize>(
+        &mut self,
+        poller: &mut Poll,
+        request: &T,
+    ) -> serde_json::Result<()> {
         self.check_not_closed()?;
 
         let start_writing = self.queued_bytes_len() == 0;

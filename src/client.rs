@@ -92,7 +92,7 @@ impl RpcClient {
 
     /// Closes the internal TCP connection if it has been established.
     pub fn close(&mut self, poller: &mut Poll) {
-        let Some(c) = &mut self.connection else {
+        let Some(mut c) = self.connection.take() else {
             return;
         };
         c.close(poller);
