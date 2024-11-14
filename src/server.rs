@@ -221,7 +221,9 @@ where
 }
 
 /// Sender of an RPC request.
+// TOOD: rename to avoid conflict with std::coversion::From
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct From {
     token: Token,
+    // TODO: Add connection_seqno (u64) to avoid ABA problem
 }
