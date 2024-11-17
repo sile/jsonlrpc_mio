@@ -228,8 +228,22 @@ where
 }
 
 /// Identifier of a client.
-#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(from = "usize", into = "usize")]
 pub struct ClientId {
     token: Token,
-    // TODO: Add connection_seqno (u64) to avoid ABA problem
+}
+
+impl From<usize> for ClientId {
+    fn from(value: usize) -> Self {
+        Self {
+            token: Token(value),
+        }
+    }
+}
+
+impl From<ClientId> for usize {
+    fn from(value: ClientId) -> Self {
+        value.token.0
+    }
 }
