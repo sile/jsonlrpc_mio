@@ -69,6 +69,13 @@ where
     }
 
     /// Takes a JSON-RPC request from the receive queue.
+    ///
+    /// # NOTE
+    ///
+    /// If you process the request asynchronously,
+    /// it is your responsibility to specify a sufficiently large
+    /// token space when calling [`RpcServer::start()`]
+    /// to prevent the ABA problem.
     pub fn try_recv(&mut self) -> Option<(ClientId, REQ)> {
         self.requests.pop_front()
     }
