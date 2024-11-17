@@ -11,7 +11,7 @@ readme = "README.md"
 
 [dependencies]
 jsonlrpc = "0.2.0"
-mio = { version = "1.0.2", features = ["os-poll", "net"] }
+mio = { version = "1.0.2", default-features=false, features = ["os-poll", "net"] }
 serde = "1.0.214"
 serde_json = "1.0.132"
 
