@@ -63,7 +63,7 @@ mod server;
 
 pub use self::client::RpcClient;
 pub use self::connection::{Connection, ConnectionState};
-pub use self::server::{From, RpcServer};
+pub use self::server::{ClientId, RpcServer};
 
 #[cfg(test)]
 mod tests {

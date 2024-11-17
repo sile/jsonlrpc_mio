@@ -24,7 +24,7 @@ pub struct RpcServer<REQ = RequestObject> {
     token_max: Token,
     next_token: Token,
     connections: HashMap<Token, Connection>,
-    requests: VecDeque<(From, REQ)>,
+    requests: VecDeque<(ClientId, REQ)>,
     _request: PhantomData<REQ>,
 }
 
@@ -69,7 +69,7 @@ where
     }
 
     /// Takes a JSON-RPC request from the receive queue.
-    pub fn try_recv(&mut self) -> Option<(From, REQ)> {
+    pub fn try_recv(&mut self) -> Option<(ClientId, REQ)> {
         self.requests.pop_front()
     }
 
@@ -77,7 +77,7 @@ where
     pub fn reply<T: Serialize>(
         &mut self,
         poller: &mut Poll,
-        from: From,
+        from: ClientId,
         response: &T,
     ) -> std::io::Result<bool> {
         let Some(connection) = self.connections.get_mut(&from.token) else {
@@ -158,7 +158,7 @@ where
                     Ok(())
                 }
                 Ok(request) => {
-                    self.requests.push_back((From { token }, request));
+                    self.requests.push_back((ClientId { token }, request));
                     Ok(())
                 }
             }
@@ -220,10 +220,9 @@ where
     }
 }
 
-/// Sender of an RPC request.
-// TOOD: rename to avoid conflict with std::coversion::From
+/// Identifier of a client.
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct From {
+pub struct ClientId {
     token: Token,
     // TODO: Add connection_seqno (u64) to avoid ABA problem
 }
