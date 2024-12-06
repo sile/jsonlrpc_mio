@@ -115,6 +115,7 @@ where
         let mut closed = false;
         connection.handle_event(poller, event, |c, poller| {
             match c.stream_mut().read_value::<REQ>() {
+                Err(e) if e.io_error_kind() == Some(std::io::ErrorKind::WouldBlock) => Err(e),
                 Err(e) if e.is_io() => {
                     c.close(poller);
                     closed = true;
@@ -160,8 +161,6 @@ where
                             }
                         };
                     let _ = c.send(poller, &response);
-                    c.close(poller);
-                    closed = true;
                     Ok(())
                 }
                 Ok(request) => {
