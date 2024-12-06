@@ -218,7 +218,7 @@ mod tests {
             }
         }
         assert!(success);
-        assert_eq!(0, server.connections().count());
+        assert_eq!(1, server.connections().count());
 
         Ok(())
     }

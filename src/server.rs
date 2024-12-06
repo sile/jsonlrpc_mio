@@ -161,8 +161,6 @@ where
                             }
                         };
                     let _ = c.send(poller, &response);
-                    c.close(poller);
-                    closed = true;
                     Ok(())
                 }
                 Ok(request) => {
