@@ -47,12 +47,13 @@ impl Connection {
     }
 
     pub(crate) fn close(&mut self, poller: &mut Poll) {
-        if self.state != ConnectionState::Closed {
+        if self.state == ConnectionState::Closed {
             return;
         }
 
         let _ = poller.registry().deregister(self.stream.inner_mut());
         let _ = self.stream.inner().shutdown(Shutdown::Both);
+        self.state = ConnectionState::Closed;
     }
 
     pub(crate) fn queued_bytes_len(&self) -> usize {
@@ -66,7 +67,7 @@ impl Connection {
         on_read: F,
     ) -> serde_json::Result<()>
     where
-        F: FnOnce(&mut Self, &mut Poll) -> serde_json::Result<()>,
+        F: FnMut(&mut Self, &mut Poll) -> serde_json::Result<()>,
     {
         debug_assert_eq!(self.token, event.token());
         self.check_not_closed()?;
@@ -83,11 +84,17 @@ impl Connection {
         Ok(())
     }
 
-    fn handle_read<F>(&mut self, poller: &mut Poll, on_read: F) -> serde_json::Result<()>
+    fn handle_read<F>(&mut self, poller: &mut Poll, mut on_read: F) -> serde_json::Result<()>
     where
-        F: FnOnce(&mut Self, &mut Poll) -> serde_json::Result<()>,
+        F: FnMut(&mut Self, &mut Poll) -> serde_json::Result<()>,
     {
-        on_read(self, poller).or_else(|e| self.handle_error(poller, e))
+        while self.state != ConnectionState::Closed {
+            if let Err(e) = on_read(self, poller) {
+                self.handle_error(poller, e)?;
+                break;
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn send<T: Serialize>(
